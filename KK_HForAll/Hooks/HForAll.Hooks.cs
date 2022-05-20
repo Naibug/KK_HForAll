@@ -19,91 +19,143 @@ namespace KK_HForAll
             internal static void InitHooks(Harmony hi)
             {
                 hi.PatchAll(typeof(Hooks));
+
+                GameAPI.EndH += OnHEnd;
+            }
+            /// <summary>
+            /// Code found in KK_GameplayMod, added so 3p mode isn't inescapable with a virgin. Needed to make the end button visible if a virgin is present.
+            /// </summary>
+            //These hooks are for H in story mode. In free H they still run but have no effect. 
+            //Since free H is the only mode available in official VR, we don't need to patch the VRHScene class (the VR equivalent of HSceneProc).
+            [HarmonyPrefix]
+            [HarmonyPatch(typeof(HSceneProc), "Start")]
+            private static void HSpriteUpdatePre(HSceneProc __instance)
+            {
+                // Adjust help sprite location so it doesn't cover the back button
+                var rt = __instance.sprite.objFirstHHelpBase.transform.parent.GetComponent<RectTransform>();
+                rt.anchorMin = new Vector2(0.04f, 0f);
+                rt.offsetMax = Vector2.zero;
+                rt.offsetMin = Vector2.zero;
             }
 
-            //Old code that was taken from StrawberryDarkness mod. Used it to flesh out some of the ideas I had and road blocks. Not sure how neccessary it was? Big stopper was animation getting stuck in drain.
+            [HarmonyPrefix]
+            [HarmonyPatch(typeof(HSprite), "Update")]
+            private static void HSpriteUpdatePre(HSprite __instance, out bool __state)
+            {
+                // Skip code that hides the back button
+                __state = false;
+                if (__instance.flags.lstHeroine.Count != 0 && __instance.flags.lstHeroine[0].hCount == 0)
+                {
+                    __state = true;
+                    __instance.flags.lstHeroine[0].hCount = 1;
+                }
+            }
+
+            [HarmonyPostfix]
+            [HarmonyPatch(typeof(HSprite), "Update")]
+            private static void HSpriteUpdatePost(HSprite __instance, bool __state)
+            {
+                // Restore original hcount
+                if (__state)
+                    __instance.flags.lstHeroine[0].hCount = 0;
+            }
+
+            /// <summary>
+            /// Keep first time status if chara is still a virgin after H scene ends (only possible with these patches, normally you need to do penetration)
+            /// </summary>
+            private static void OnHEnd(object sender, EventArgs eventArgs)
+            {
+                // If girl is stil a virgin, keep her first time status
+                foreach (var heroine in GameObject.FindObjectOfType<HFlag>().lstHeroine)
+                {
+                    if (heroine.isVirgin && heroine.isAnalVirgin)
+                        heroine.hCount = 0;
+                }
+            }
+
+            //Old code that was taken from StrawberryDarkness mod. Used it to flesh out some of the ideas I had and solve road blocks. Not sure how neccessary it was? Big stopper was animation getting stuck on drain.
             //Moved general idea into the VoiceProc hook instead; it calls these so I think setting the mode to 2p should accomplish the same thing?
-           // [HarmonyPrefix]
-           // [HarmonyPatch(typeof(HVoiceCtrl), "IsPtnConditionsHoushi", new Type[]
-           //{
-           //     typeof(List<int>),
-           //     typeof(ChaControl),
-           //     typeof(int)
-           //})]
-           // private static void IsPtnConditionsHoushiPre(HVoiceCtrl __instance, ref bool __result, List<int> _lstConditions, ChaControl _female, int _main)
-           // {
-           //     if (__instance.flags.isFreeH)
-           //         return;
-           //     if (_female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.淫乱 || _female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.慣れ)
-           //     {
-           //         return;
-           //     }
+            // [HarmonyPrefix]
+            // [HarmonyPatch(typeof(HVoiceCtrl), "IsPtnConditionsHoushi", new Type[]
+            //{
+            //     typeof(List<int>),
+            //     typeof(ChaControl),
+            //     typeof(int)
+            //})]
+            // private static void IsPtnConditionsHoushiPre(HVoiceCtrl __instance, ref bool __result, List<int> _lstConditions, ChaControl _female, int _main)
+            // {
+            //     if (__instance.flags.isFreeH)
+            //         return;
+            //     if (_female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.淫乱 || _female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.慣れ)
+            //     {
+            //         return;
+            //     }
 
-           //     backmode = __instance.flags.mode;
+            //     backmode = __instance.flags.mode;
 
-           //     if (__instance.flags.mode == HFlag.EMode.houshi3P || __instance.flags.mode == HFlag.EMode.sonyu3P)
-           //     {
-           //         Console.WriteLine("HoushiPre detected 3p and fired");
-           //         __instance.flags.mode = HFlag.EMode.houshi;
-           //     }
-           // }
+            //     if (__instance.flags.mode == HFlag.EMode.houshi3P || __instance.flags.mode == HFlag.EMode.sonyu3P)
+            //     {
+            //         Console.WriteLine("HoushiPre detected 3p and fired");
+            //         __instance.flags.mode = HFlag.EMode.houshi;
+            //     }
+            // }
 
-           // [HarmonyPostfix]
-           // [HarmonyPatch(typeof(HVoiceCtrl), "IsPtnConditionsHoushi", new Type[]
-           // {
-           //     typeof(List<int>),
-           //     typeof(ChaControl),
-           //     typeof(int)
-           // })]
-           // private static void IsPtnConditionsHoushiPost(HVoiceCtrl __instance, ref bool __result, List<int> _lstConditions, ChaControl _female, int _main)
-           // {
-           //     if (__instance.flags.isFreeH)
-           //         return;
-           //     if (_female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.淫乱 || _female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.慣れ)
-           //         return;
+            // [HarmonyPostfix]
+            // [HarmonyPatch(typeof(HVoiceCtrl), "IsPtnConditionsHoushi", new Type[]
+            // {
+            //     typeof(List<int>),
+            //     typeof(ChaControl),
+            //     typeof(int)
+            // })]
+            // private static void IsPtnConditionsHoushiPost(HVoiceCtrl __instance, ref bool __result, List<int> _lstConditions, ChaControl _female, int _main)
+            // {
+            //     if (__instance.flags.isFreeH)
+            //         return;
+            //     if (_female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.淫乱 || _female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.慣れ)
+            //         return;
 
-           //     __instance.flags.mode = backmode;
-           // }
+            //     __instance.flags.mode = backmode;
+            // }
 
-           // [HarmonyPrefix]
-           // [HarmonyPatch(typeof(HVoiceCtrl), "IsPtnConditionsSonyu", new Type[]
-           // {
-           //     typeof(List<int>),
-           //     typeof(ChaControl),
-           //     typeof(int)
-           // })]
-           // private static void IsPtnConditionsSonyuPre(HVoiceCtrl __instance, ref bool __result, List<int> _lstConditions, ChaControl _female, int _main)
-           // {
-           //     if (__instance.flags.isFreeH)
-           //         return;
-           //     if (_female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.淫乱 || _female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.慣れ)
-           //     {
-           //         return;
-           //     }
+            // [HarmonyPrefix]
+            // [HarmonyPatch(typeof(HVoiceCtrl), "IsPtnConditionsSonyu", new Type[]
+            // {
+            //     typeof(List<int>),
+            //     typeof(ChaControl),
+            //     typeof(int)
+            // })]
+            // private static void IsPtnConditionsSonyuPre(HVoiceCtrl __instance, ref bool __result, List<int> _lstConditions, ChaControl _female, int _main)
+            // {
+            //     if (__instance.flags.isFreeH)
+            //         return;
+            //     if (_female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.淫乱 || _female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.慣れ)
+            //     {
+            //         return;
+            //     }
 
-           //     backmode = __instance.flags.mode;
+            //     backmode = __instance.flags.mode;
 
-           //     if (__instance.flags.mode == HFlag.EMode.houshi3P || __instance.flags.mode == HFlag.EMode.sonyu3P)
-           //     {
-           //         __instance.flags.mode = HFlag.EMode.sonyu;
-           //     }
-           // }
-           // [HarmonyPostfix]
-           // [HarmonyPatch(typeof(HVoiceCtrl), "IsPtnConditionsSonyu", new Type[]
-           // {
-           //     typeof(List<int>),
-           //     typeof(ChaControl),
-           //     typeof(int)
-           // })]
-           // private static void IsPtnConditionsSonyuPost(HVoiceCtrl __instance, ref bool __result, List<int> _lstConditions, ChaControl _female, int _main)
-           // {
-           //     if (__instance.flags.isFreeH)
-           //         return;
-           //     if (_female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.淫乱 || _female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.慣れ)
-           //         return;
+            //     if (__instance.flags.mode == HFlag.EMode.houshi3P || __instance.flags.mode == HFlag.EMode.sonyu3P)
+            //     {
+            //         __instance.flags.mode = HFlag.EMode.sonyu;
+            //     }
+            // }
+            // [HarmonyPostfix]
+            // [HarmonyPatch(typeof(HVoiceCtrl), "IsPtnConditionsSonyu", new Type[]
+            // {
+            //     typeof(List<int>),
+            //     typeof(ChaControl),
+            //     typeof(int)
+            // })]
+            // private static void IsPtnConditionsSonyuPost(HVoiceCtrl __instance, ref bool __result, List<int> _lstConditions, ChaControl _female, int _main)
+            // {
+            //     if (__instance.flags.isFreeH)
+            //         return;
+            //     if (_female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.淫乱 || _female.GetHeroine().HExperience == SaveData.Heroine.HExperienceKind.慣れ)
+            //         return;
 
-           //     __instance.flags.mode = backmode;
-           // }
+            //     __instance.flags.mode = backmode;
+            // }
 
             //Also from strawberry darkness, pretty sure this is needed to get breathing sounds to play right with less than experienced girls.
             //Maybe add experience check? Think its different than others but for now leaving his code as is until I understand more of this better
@@ -153,17 +205,18 @@ namespace KK_HForAll
 
             [HarmonyPostfix]
             [HarmonyPatch(typeof(H3PSonyu), nameof(H3PSonyu.Proc))]
-            public static void CheckForDropAnimation(HActionBase __instance)
+            public static void CheckForStuckAnimation(HActionBase __instance)
             {
-                //Fix for stuck "Drop" animation. Difference in how 3p vs 2p works. Borrow methods from 2p; check to see if either of them are talking in 3p.
+                //Fix for stuck "Drop" and "OLoop" animation. Difference in how 3p vs 2p works. Borrow methods from 2p; check to see if either of them are talking in 3p.
                 //If not, manually set the now voice to breath for both. Should trick the 3p proc code into unlocking the options and allowing player to select more positions, etc.
-                if ((__instance.female.getAnimatorStateInfo(0).IsName("Drop")) && (!Singleton<Voice>.Instance.IsVoiceCheck(__instance.flags.transVoiceMouth[0]) || !Singleton<Voice>.Instance.IsVoiceCheck(__instance.flags.transVoiceMouth[1])))
+                //Pretty sure you have to check both 0 and 1 for these, unless its always the active member? Works but not sure if the best implementation.
+                if ((__instance.female.getAnimatorStateInfo(0).IsName("Drop") || __instance.female.getAnimatorStateInfo(1).IsName("Drop") 
+                    ||__instance.female.getAnimatorStateInfo(0).IsName("OLoop") || __instance.female.getAnimatorStateInfo(1).IsName("OLoop")) 
+                    && (!Singleton<Voice>.Instance.IsVoiceCheck(__instance.flags.transVoiceMouth[0]) || !Singleton<Voice>.Instance.IsVoiceCheck(__instance.flags.transVoiceMouth[1])))
                 {
                     __instance.voice.nowVoices[0].state = HVoiceCtrl.VoiceKind.breath;
                     __instance.voice.nowVoices[1].state = HVoiceCtrl.VoiceKind.breath;
                 }
-                //Also a bug with OLoop, think its similar. Compare differences in HSonyu vs H3PSonyu classes to figure out what locks it in that animation.
-                //Changing VoiceKind to breath like above broke the lock, just have to figure out what conditions to check. Triggered by clicking girl during animation.
             }
 
             [HarmonyPrefix]
