@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using HarmonyLib;
 using KKAPI.MainGame;
+using KKAPI.Utilities;
 using Manager;
 using UnityEngine;
 
@@ -203,19 +204,157 @@ namespace KK_HForAll
                 //__instance.flags.nowAnimationInfo.sysTaii = backTaii;
             }
 
+
             [HarmonyPostfix]
             [HarmonyPatch(typeof(H3PSonyu), nameof(H3PSonyu.Proc))]
             public static void CheckForStuckAnimation(HActionBase __instance)
             {
+                if (__instance.flags.isFreeH)
+                    return;
                 //Fix for stuck "Drop" and "OLoop" animation. Difference in how 3p vs 2p works. Borrow methods from 2p; check to see if either of them are talking in 3p.
                 //If not, manually set the now voice to breath for both. Should trick the 3p proc code into unlocking the options and allowing player to select more positions, etc.
                 //Pretty sure you have to check both 0 and 1 for these, unless its always the active member? Works but not sure if the best implementation.
-                if ((__instance.female.getAnimatorStateInfo(0).IsName("Drop") || __instance.female.getAnimatorStateInfo(1).IsName("Drop") 
-                    ||__instance.female.getAnimatorStateInfo(0).IsName("OLoop") || __instance.female.getAnimatorStateInfo(1).IsName("OLoop")) 
+                if ((__instance.female.getAnimatorStateInfo(0).IsName("Drop") || __instance.female.getAnimatorStateInfo(1).IsName("Drop")
+                    || __instance.female.getAnimatorStateInfo(0).IsName("OLoop") || __instance.female.getAnimatorStateInfo(1).IsName("OLoop"))
                     && (!Singleton<Voice>.Instance.IsVoiceCheck(__instance.flags.transVoiceMouth[0]) || !Singleton<Voice>.Instance.IsVoiceCheck(__instance.flags.transVoiceMouth[1])))
                 {
                     __instance.voice.nowVoices[0].state = HVoiceCtrl.VoiceKind.breath;
                     __instance.voice.nowVoices[1].state = HVoiceCtrl.VoiceKind.breath;
+                }
+            }
+
+            //Not wild about this approach but should work. In H3PHoushi, IN_Loop is only referenced once. 3p has audio that plays during this, but there isn't really anything
+            //like it in the 2p audio lines. This also means that the climax animation just ends right away due to how the 3p code is written.
+            //This bypasses the Proc logic while the animator state is IN_Loop, which doesn't seem to have dire conseqeunces and behaves like it would for 2p.
+            //TODO: Still need to add the right tongue animations during 3pHoushi and maybe get the off girl to comment in some way? Try to get non-active girl not to animate like
+            //she's the active heroine?
+            [HarmonyPrefix]
+            [HarmonyPatch(typeof(H3PHoushi), nameof(H3PHoushi.Proc))]
+            public static bool ChangeIN_LoopLogic(H3PHoushi __instance)
+            {
+                if (__instance.flags.isFreeH)
+                    return true;
+                if (__instance.flags.lstHeroine[0].HExperience != SaveData.Heroine.HExperienceKind.淫乱 || __instance.flags.lstHeroine[0].HExperience != SaveData.Heroine.HExperienceKind.慣れ)
+                {
+                    AnimatorStateInfo animatorStateInfo = __instance.female.getAnimatorStateInfo(0);
+                    if (animatorStateInfo.IsName("IN_Loop"))
+                    {
+                        __instance.FinishGaugeDown();
+                        if (!Singleton<Manager.Voice>.Instance.IsVoiceCheck(__instance.flags.transVoiceMouth[0]))
+                        {
+                            __instance.SetPlay("Oral_Idle_IN");
+                            return false;
+                        }
+                        return false;
+                    }
+                    else
+                        return true;
+                }
+                else
+                    return true;
+            }
+
+            [HarmonyPrefix]
+            [HarmonyPatch(typeof(H3PHoushi), nameof(H3PHoushi.Proc))]
+            public static void EnableTongueState(H3PHoushi __instance)
+            {
+                if (__instance.flags.isFreeH)
+                    return;
+
+                if (__instance.flags.lstHeroine[0].HExperience != SaveData.Heroine.HExperienceKind.淫乱 || __instance.flags.lstHeroine[0].HExperience != SaveData.Heroine.HExperienceKind.慣れ)
+                {
+                    AnimatorStateInfo animatorStateInfo = __instance.female.getAnimatorStateInfo(0);
+                    if (animatorStateInfo.IsName("WLoop"))
+                    {
+                        __instance.female.ChangeMouthPtn(21);
+                        __instance.female.ChangeMouthOpenMax(1);
+                        __instance.female.ChangeMouthFixed(false);
+
+                        __instance.female1.ChangeMouthPtn(21);
+                        __instance.female1.ChangeMouthOpenMax(1);
+                        __instance.female1.ChangeMouthFixed(false);
+                    }
+                    else if (animatorStateInfo.IsName("SLoop") || animatorStateInfo.IsName("OLoop"))
+                    {
+                        __instance.female.ChangeMouthPtn(22);
+                        __instance.female.ChangeMouthOpenMax(1);
+                        __instance.female.ChangeMouthFixed(false);
+
+                        __instance.female1.ChangeMouthPtn(21);
+                        __instance.female1.ChangeMouthOpenMax(1);
+                        __instance.female1.ChangeMouthFixed(false);
+                    }
+                    else if (animatorStateInfo.IsName("IN_Start"))
+                    {
+                        __instance.female.ChangeMouthPtn(22);
+                        __instance.female.ChangeMouthOpenMax(1);
+                        __instance.female.ChangeMouthFixed(false);
+
+                        __instance.female1.ChangeMouthPtn(2);
+                        __instance.female1.ChangeMouthOpenMax(1);
+                        __instance.female1.ChangeMouthFixed(false);
+                    }
+                    else if (animatorStateInfo.IsName("IN_Loop"))
+                    {
+                        __instance.female.ChangeMouthPtn(22);
+                        __instance.female.ChangeMouthOpenMax(1);
+                        __instance.female.ChangeMouthFixed(false);
+
+                        __instance.female1.ChangeMouthPtn(1);
+                        __instance.female1.ChangeMouthOpenMax(1);
+                        __instance.female1.ChangeMouthFixed(false);
+                    }
+                    else if (animatorStateInfo.IsName("Oral_Idle_IN") || animatorStateInfo.IsName("Oral_Idle") 
+                        || animatorStateInfo.IsName("Drink_IN") || animatorStateInfo.IsName("Vomit_IN"))
+                    {
+                        __instance.female.ChangeMouthPtn(42);
+                        __instance.female.ChangeMouthOpenMax(1);
+                        __instance.female.ChangeMouthFixed(false);
+
+                        __instance.female1.ChangeMouthPtn(1);
+                        __instance.female1.ChangeMouthOpenMax(1);
+                        __instance.female1.ChangeMouthFixed(false);
+                    }
+                    else if (animatorStateInfo.IsName("Drink"))
+                    {
+                        __instance.female.ChangeMouthPtn(36);
+                        __instance.female.ChangeMouthOpenMax(1);
+                        __instance.female.ChangeMouthFixed(false);
+
+                        __instance.female1.ChangeMouthPtn(1);
+                        __instance.female1.ChangeMouthOpenMax(1);
+                        __instance.female1.ChangeMouthFixed(false);
+                    }
+                    else if (animatorStateInfo.IsName("Drink_A"))
+                    {
+                        __instance.female.ChangeMouthPtn(1);
+                        __instance.female.ChangeMouthOpenMax(1);
+                        __instance.female.ChangeMouthFixed(false);
+
+                        __instance.female1.ChangeMouthPtn(1);
+                        __instance.female1.ChangeMouthOpenMax(1);
+                        __instance.female1.ChangeMouthFixed(false);
+                    } 
+                    else if (animatorStateInfo.IsName("Vomit"))
+                    {
+                        __instance.female.ChangeMouthPtn(21);
+                        __instance.female.ChangeMouthOpenMax(1);
+                        __instance.female.ChangeMouthFixed(false);
+
+                        __instance.female1.ChangeMouthPtn(1);
+                        __instance.female1.ChangeMouthOpenMax(1);
+                        __instance.female1.ChangeMouthFixed(false);
+                    }
+                    else if (animatorStateInfo.IsName("Vomit_A"))
+                    {
+                        __instance.female.ChangeMouthPtn(1);
+                        __instance.female.ChangeMouthOpenMax(1);
+                        __instance.female.ChangeMouthFixed(false);
+
+                        __instance.female1.ChangeMouthPtn(1);
+                        __instance.female1.ChangeMouthOpenMax(1);
+                        __instance.female1.ChangeMouthFixed(false);
+                    }
                 }
             }
 
@@ -247,7 +386,7 @@ namespace KK_HForAll
                 if (__instance.flags.isFreeH)
                     return;
 
-                
+
                 if (__instance.flags.lstHeroine[_main].HExperience != SaveData.Heroine.HExperienceKind.淫乱 || __instance.flags.lstHeroine[_main].HExperience != SaveData.Heroine.HExperienceKind.慣れ)
                 {
                     if (__instance.flags.mode == HFlag.EMode.houshi3P)
@@ -284,8 +423,8 @@ namespace KK_HForAll
                     //Also licking lacks tongues, probably not hard to fix but a standing issue.
                     if (num == 7)
                     {
-                        __instance.flags.nowAnimationInfo.sysTaii = 2;
-                        __instance.flags.nowAnimationInfo.kindHoushi = 1;
+                        //__instance.flags.nowAnimationInfo.sysTaii = 2;
+                        //__instance.flags.nowAnimationInfo.kindHoushi = 1;
                         if (num2 == 0)
                             __instance.flags.voice.playVoices[_main] = 200;
                         if (num2 == 1 || num2 == 2)
@@ -319,7 +458,7 @@ namespace KK_HForAll
                         //if its a cowgirl position, reduce it to the missionary range of voices. workaround until i figure out how i broke it
                         if (num2 >= 39)
                             target -= 38;
-                        
+
                         __instance.flags.voice.playVoices[_main] = target;
                     }
                 }
